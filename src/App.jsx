@@ -256,20 +256,45 @@ export default function SeatBite() {
   );
 
   return (
-    <div style={{ fontFamily: font, minHeight: "100vh", background: "#0a0a0f", color: "#f0ece4", position: "relative", overflow: "hidden" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<div style={{ 
+  fontFamily: font, 
+  minHeight: "100vh", 
+  width: "100vw",
+  maxWidth: "100%",      
+  background: "#0a0a0f", 
+  color: "#f0ece4", 
+  position: "relative", 
+  overflowX: "hidden"   // Prevents accidental horizontal scrolling
+}}>      
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", opacity: 0.04, backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
 
-      <header style={{ background: `linear-gradient(135deg, ${oc} 0%, #dc2f02 100%)`, padding: "14px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 4px 30px rgba(232,93,4,0.3)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ background: "#fff", color: oc, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, fontSize: 18, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>🍿</div>
-          <div style={{ fontFamily: fontD, fontSize: 28, letterSpacing: 2, lineHeight: 1 }}>SEATBITE</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {tItems > 0 && <span style={{ background: "rgba(232,93,4,0.15)", color: oc, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{tItems} · {tPrice} ر.س</span>}
-          <button style={{ ...btn(false), padding: "8px 14px", fontSize: 13, background: "rgba(255,255,255,0.15)", border: "none" }}>تسجيل</button>
-        </div>
-      </header>
+<header style={{ 
+  background: `linear-gradient(135deg, ${oc} 0%, #dc2f02 100%)`, 
+  width: "100%", // Ensures the orange bar hits both edges
+  position: "sticky", 
+  top: 0, 
+  zIndex: 100, 
+  boxShadow: "0 4px 30px rgba(232,93,4,0.3)" 
+}}>
+  <div style={{ 
+    maxWidth: 520,      // Matches your content width
+    margin: "0 auto",   // Centers the inner header content
+    padding: "14px 16px", 
+    display: "flex", 
+    justifyContent: "space-between", 
+    alignItems: "center" 
+  }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ background: "#fff", color: oc, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, fontSize: 18, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>🍿</div>
+      <div style={{ fontFamily: fontD, fontSize: 28, letterSpacing: 2, lineHeight: 1 }}>SEATBITE</div>
+    </div>
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {tItems > 0 && <span style={{ background: "rgba(232,93,4,0.15)", color: "#fff", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{tItems} · {tPrice} ر.س</span>}
+      <button style={{ ...btn(false), padding: "8px 14px", fontSize: 13, background: "rgba(255,255,255,0.15)", border: "none" }}>تسجيل</button>
+    </div>
+  </div>
+</header>
 
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "24px 16px 100px", position: "relative", zIndex: 1 }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 28 }}>
@@ -437,12 +462,19 @@ export default function SeatBite() {
         </>}
       </div>
 
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.5)} }
-        @keyframes shimmer { 0%{opacity:0.3} 50%{opacity:0.6} 100%{opacity:0.3} }
-        * { box-sizing: border-box; margin: 0; }
-        button:hover { filter: brightness(1.1); }
-      `}</style>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.5)} }
+  @keyframes shimmer { 0%{opacity:0.3} 50%{opacity:0.6} 100%{opacity:0.3} }
+  
+  /* The ultimate reset for React/Vite/Next apps */
+  html, body, #root { 
+    margin: 0; 
+    padding: 0; 
+    width: 100%; 
+    overflow-x: hidden; 
+  }
+  
+  * { box-sizing: border-box; }
+  button:hover { filter: brightness(1.1); }`}</style>
     </div>
   );
 }
