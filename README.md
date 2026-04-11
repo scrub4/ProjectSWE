@@ -22,22 +22,29 @@ The system simulates a real-world experience where users select a movie, choose 
 ## 📂 Project Structure
 ProjectSWE/
 │── public/
+│   ├── favicon.svg
+│   └── icons.svg
 │── src/
 │   ├── assets/
-│   ├── App.jsx
-│   ├── main.jsx
-│   ├── seatbite.jsx
+│   │   ├── hero.png
+│   │   ├── react.svg
+│   │   └── vite.svg
 │   ├── App.css
+│   ├── App.jsx
 │   ├── index.css
+│   └── main.jsx
+│── .gitignore
+│── README.md
+│── eslint.config.js
 │── index.html
+│── package-lock.json
 │── package.json
 │── vite.config.js
-│── README.md
 
 ## ⚙️ Installation & Setup
 
 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/ProjectSWE.git
+git clone https://github.com/scrub4/ProjectSWE.git
 cd ProjectSWE
 
 2. Install dependencies
@@ -64,7 +71,7 @@ http://localhost:5173
 
 ## 👥 Team Members
 - FIRAS ALMASHAMA
-- HASSAN ALSHABANH
+- HASSAN ALSHABANAH
 - AHMED ALROMAIH
 - MOHAMMED ALAYYASH
 
