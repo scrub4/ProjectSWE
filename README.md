@@ -1,16 +1,75 @@
-# React + Vite
+# 🎬 SeatBite – Cinema Food Ordering System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 📌 Project Description
+SeatBite is a React-based front-end prototype developed for the SWE project. It allows users to order food directly to their cinema seat through an interactive and user-friendly interface.
 
-Currently, two official plugins are available:
+The system simulates a real-world experience where users select a movie, choose a cinema, pick their seat, order snacks and drinks, and track their order delivery.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Features
+- Movie selection interface
+- Cinema selection system
+- Interactive seat booking UI
+- Food and drinks ordering system
+- Dynamic cart with total price
+- Order tracking timeline (Confirmed → Preparing → On the Way → Delivered)
+- Responsive and modern UI
 
-## React Compiler
+## 🛠️ Technologies Used
+- React (Vite)
+- JavaScript (JSX)
+- HTML & CSS
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 📂 Project Structure
+ProjectSWE/
+│── public/
+│── src/
+│   ├── assets/
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── seatbite.jsx
+│   ├── App.css
+│   ├── index.css
+│── index.html
+│── package.json
+│── vite.config.js
+│── README.md
 
-## Expanding the ESLint configuration
+## ⚙️ Installation & Setup
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Clone the repository
+git clone https://github.com/YOUR_USERNAME/ProjectSWE.git
+cd ProjectSWE
+
+2. Install dependencies
+npm install
+
+3. Run the project
+npm run dev
+
+4. Open in browser
+http://localhost:5173
+
+## 🧑‍💻 Usage
+1. Select a movie
+2. Choose a cinema
+3. Pick your seat
+4. Add items to cart
+5. Place your order
+6. Track order status
+
+## 📌 Notes
+- This is a front-end prototype only (no backend integration)
+- All data (movies, cinemas, menu) is hardcoded
+- Built to demonstrate UI/UX and interactivity using React
+
+## 👥 Team Members
+- FIRAS ALMASHAMA
+- HASSAN ALSHABANH
+- AHMED ALROMAIH
+- MOHAMMED ALAYYASH
+
+## 📊 Assignment Info
+This project is part of the Front-End Prototype Milestone for the SWE course. It demonstrates React component structure, interactive UI design, proper project organization, and front-end development using Vite.
+
+## 🔗 Repository
+https://github.com/scrub4/ProjectSWE
