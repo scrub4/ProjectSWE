@@ -57,10 +57,10 @@ http://localhost:5173
 - Built for demonstration purposes
 
 ## 👥 Team Members
-- Your Name
-- Member 2
-- Member 3
-- Member 4
+- Firas Almashama
+- HASSAN ALSHABANH
+- AHMED ALROMAIH
+- MOHAMMED ALAYYASH
 
 ## 🔗 Repository
-Add your GitHub repository link here
+https://github.com/scrub4/ProjectSWE
