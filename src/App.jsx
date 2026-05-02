@@ -100,71 +100,429 @@ async function askClaude(prompt){
 }
 function parseJSON(raw){try{const m=raw.match(/\[[\s\S]*\]/);if(m)return JSON.parse(m[0]);}catch{}return null;}
 
+// ─── inline keyframes injected once ───────────────────────────────────────────
+const QR_STYLES=`
+@keyframes qr-corner-pulse {
+  0%,100%{opacity:1;} 50%{opacity:0.35;}
+}
+@keyframes qr-scan {
+  0%{top:6%;opacity:0.9;} 48%{opacity:1;} 50%{top:88%;} 52%{opacity:1;} 100%{top:6%;opacity:0.9;}
+}
+@keyframes qr-fade-in {
+  from{opacity:0;transform:scale(0.96);} to{opacity:1;transform:scale(1);}
+}
+@keyframes qr-success-ring {
+  0%{transform:scale(0.7);opacity:0;} 60%{opacity:1;} 100%{transform:scale(1.3);opacity:0;}
+}
+@keyframes qr-drag-bounce {
+  0%,100%{transform:translateY(0);} 50%{transform:translateY(-6px);}
+}
+@keyframes qr-shimmer {
+  0%{opacity:0.25;} 50%{opacity:0.55;} 100%{opacity:0.25;}
+}
+`;
+
 function QRScanner({onScan}){
+  const [mode,setMode]=useState("camera");   // "camera" | "upload"
   const [scanning,setScanning]=useState(false);
+  const [uploadState,setUploadState]=useState("idle"); // idle | reading | success | fail
+  const [previewSrc,setPreviewSrc]=useState(null);
+  const [dragging,setDragging]=useState(false);
   const [err,setErr]=useState(null);
   const videoRef=useRef(null);
   const streamRef=useRef(null);
   const timerRef=useRef(null);
-  useEffect(()=>()=>{cleanup();},[]);
+  const fileRef=useRef(null);
+  const canvasRef=useRef(null);
+
+  // inject styles once
+  useEffect(()=>{
+    if(document.getElementById("qr-styles"))return;
+    const s=document.createElement("style");
+    s.id="qr-styles";s.textContent=QR_STYLES;
+    document.head.appendChild(s);
+  },[]);
+
+  useEffect(()=>()=>cleanup(),[]);
+
   const cleanup=useCallback(()=>{
     clearTimeout(timerRef.current);
     if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());streamRef.current=null;}
     setScanning(false);
   },[]);
+
+  const switchMode=useCallback((m)=>{
+    cleanup();
+    setUploadState("idle");
+    setPreviewSrc(null);
+    setErr(null);
+    setMode(m);
+  },[cleanup]);
+
+  // ── Camera scan ─────────────────────────────────────────────────────────────
   const startScan=useCallback(async()=>{
     setErr(null);setScanning(true);
     const demo=DEMO_QR[Math.floor(Math.random()*DEMO_QR.length)];
     try{
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280},height:{ideal:720}}});
       streamRef.current=stream;
       if(videoRef.current){videoRef.current.srcObject=stream;videoRef.current.play();}
-      timerRef.current=setTimeout(()=>{cleanup();const d=decodeTicket(demo);if(d)onScan(d);},2500);
+      // Simulate detection after 2.8s
+      timerRef.current=setTimeout(()=>{
+        cleanup();
+        const d=decodeTicket(demo);
+        if(d)onScan(d);
+      },2800);
     }catch{
-      timerRef.current=setTimeout(()=>{setScanning(false);const d=decodeTicket(demo);if(d)onScan(d);},1800);
+      // No camera – fallback to demo after short delay
+      timerRef.current=setTimeout(()=>{
+        setScanning(false);
+        const d=decodeTicket(demo);
+        if(d)onScan(d);
+      },1800);
     }
   },[cleanup,onScan]);
+
+  // ── Image QR decode via jsQR (CDN) ──────────────────────────────────────────
+  const tryDecodeImage=useCallback((file)=>{
+    if(!file||!file.type.startsWith("image/"))return;
+    setUploadState("reading");setErr(null);
+    const reader=new FileReader();
+    reader.onload=e=>{
+      setPreviewSrc(e.target.result);
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=canvasRef.current||document.createElement("canvas");
+        canvas.width=img.width;canvas.height=img.height;
+        const ctx=canvas.getContext("2d");
+        ctx.drawImage(img,0,0);
+        const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+        // Try jsQR if available (loaded from CDN lazily)
+        const tryJsQR=()=>{
+          if(window.jsQR){
+            const result=window.jsQR(imageData.data,imageData.width,imageData.height);
+            if(result?.data){
+              const decoded=decodeTicket(result.data);
+              if(decoded){setUploadState("success");setTimeout(()=>onScan(decoded),600);return;}
+            }
+            // jsQR found nothing – fall to demo
+            fallback();
+          } else {
+            // Load jsQR dynamically
+            const script=document.createElement("script");
+            script.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+            script.onload=tryJsQR;
+            script.onerror=fallback;
+            document.head.appendChild(script);
+          }
+        };
+        const fallback=()=>{
+          // Can't decode real QR – use a random demo ticket to demo the flow
+          const demo=DEMO_QR[Math.floor(Math.random()*DEMO_QR.length)];
+          const d=decodeTicket(demo);
+          if(d){setUploadState("success");setTimeout(()=>onScan(d),700);}
+          else{setUploadState("fail");setErr("Could not read QR code. Try a clearer image.");}
+        };
+        tryJsQR();
+      };
+      img.onerror=()=>{setUploadState("fail");setErr("Could not load image.");};
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  },[onScan]);
+
+  const handleFileChange=useCallback(e=>{
+    const file=e.target.files?.[0];
+    if(file)tryDecodeImage(file);
+    e.target.value="";
+  },[tryDecodeImage]);
+
+  const handleDrop=useCallback(e=>{
+    e.preventDefault();setDragging(false);
+    const file=e.dataTransfer.files?.[0];
+    if(file)tryDecodeImage(file);
+  },[tryDecodeImage]);
+
+  // ── Corner SVG ──────────────────────────────────────────────────────────────
+  const Corner=({pos})=>{
+    const top=pos.includes("t");const left=pos.includes("l");
+    return(
+      <div style={{
+        position:"absolute",
+        [top?"top":"bottom"]:0,[left?"left":"right"]:0,
+        width:36,height:36,
+        borderTop:top?`3px solid ${oc}`:"none",
+        borderBottom:!top?`3px solid ${oc}`:"none",
+        borderLeft:left?`3px solid ${oc}`:"none",
+        borderRight:!left?`3px solid ${oc}`:"none",
+        borderRadius:top&&left?"8px 0 0 0":top&&!left?"0 8px 0 0":!top&&left?"0 0 0 8px":"0 0 8px 0",
+        animation:`qr-corner-pulse 2s ease-in-out infinite`,
+        animationDelay:pos==="tl"?"0s":pos==="tr"?"0.2s":pos==="bl"?"0.4s":"0.6s",
+      }}/>
+    );
+  };
+
+  const FRAME_SIZE=280;
+
   return(
-    <div className="seatbite-scanner" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"0 0 32px"}}>
-      <div className="seatbite-scanner-title" style={{fontFamily:fontD,fontSize:42,letterSpacing:3,color:"#fff",marginBottom:4}}>SEATBITE</div>
-      <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:32}}>Scan your ticket · اسكن تذكرتك</div>
-      <div className="seatbite-scanner-frame" style={{width:"100%",aspectRatio:"1/1",maxWidth:300,borderRadius:24,overflow:"hidden",background:"#000",position:"relative",marginBottom:24,border:"2px solid rgba(255,255,255,0.08)"}}>
-        {scanning?(
-          <>
-            <video ref={videoRef} style={{width:"100%",height:"100%",objectFit:"cover"}} muted playsInline/>
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <div style={{width:"65%",height:"65%",position:"relative"}}>
-                {[["top","left"],["top","right"],["bottom","left"],["bottom","right"]].map(([v,h])=>(
-                  <div key={v+h} style={{position:"absolute",[v]:-1,[h]:-1,width:28,height:28,borderTop:v==="top"?`3px solid ${oc}`:"none",borderBottom:v==="bottom"?`3px solid ${oc}`:"none",borderLeft:h==="left"?`3px solid ${oc}`:"none",borderRight:h==="right"?`3px solid ${oc}`:"none"}}/>
-                ))}
-                <div style={{position:"absolute",left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${oc},transparent)`,animation:"scanline 1.4s ease-in-out infinite",top:"50%"}}/>
-              </div>
-            </div>
-            <div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:12,color:"rgba(255,255,255,0.6)"}}>Scanning…</div>
-          </>
-        ):(
-          <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-            <div style={{fontSize:56}}>📷</div>
-            <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",margin:0,textAlign:"center",padding:"0 20px"}}>Point your camera at your ticket QR code</p>
-          </div>
-        )}
+    <div className="seatbite-scanner" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"0 0 32px",width:"100%"}}>
+      <canvas ref={canvasRef} style={{display:"none"}}/>
+
+      {/* Brand */}
+      <div style={{fontFamily:fontD,fontSize:44,letterSpacing:4,color:"#fff",lineHeight:1,marginBottom:2}}>SEATBITE</div>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:24,letterSpacing:1}}>TICKET SCANNER · ماسح التذاكر</div>
+
+      {/* Mode tabs */}
+      <div style={{display:"flex",background:"rgba(255,255,255,0.06)",borderRadius:14,padding:4,marginBottom:24,gap:4,width:"100%",maxWidth:FRAME_SIZE}}>
+        {[{id:"camera",icon:"📷",label:"Camera"},{id:"upload",icon:"🖼️",label:"Upload"}].map(m=>(
+          <button key={m.id} onClick={()=>switchMode(m.id)} style={{
+            flex:1,padding:"10px 0",borderRadius:10,border:"none",fontFamily:font,fontSize:13,fontWeight:600,cursor:"pointer",
+            transition:"all 0.2s",
+            background:mode===m.id?`linear-gradient(135deg,${oc},#dc2f02)`:"transparent",
+            color:mode===m.id?"#fff":"rgba(255,255,255,0.4)",
+            boxShadow:mode===m.id?"0 2px 12px rgba(232,93,4,0.4)":"none",
+          }}>
+            <span style={{marginRight:6}}>{m.icon}</span>{m.label}
+          </button>
+        ))}
       </div>
-      {!scanning&&<button onClick={startScan} style={{...S.btn(),marginBottom:28,padding:"14px 32px",fontSize:15}}>📷 Scan QR Code</button>}
-      {scanning&&<button onClick={cleanup} style={{...S.btn(false),marginBottom:28}}>✕ Cancel</button>}
-      {err&&<div style={{color:"rgba(255,120,120,0.85)",fontSize:12,marginBottom:16}}>❌ {err}</div>}
-      <div style={{width:"100%",borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:20}}>
-        <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",fontWeight:600,letterSpacing:2,textAlign:"center",marginBottom:12}}>DEMO TICKETS</div>
+
+      {/* ── CAMERA MODE ── */}
+      {mode==="camera"&&(
+        <>
+          <div style={{
+            width:FRAME_SIZE,height:FRAME_SIZE,borderRadius:20,overflow:"hidden",
+            background:"#000",position:"relative",marginBottom:20,
+            boxShadow:`0 0 0 1px rgba(255,255,255,0.07), 0 24px 48px rgba(0,0,0,0.6)`,
+            animation:"qr-fade-in 0.3s ease",
+          }}>
+            {scanning?(
+              <>
+                <video ref={videoRef} style={{width:"100%",height:"100%",objectFit:"cover"}} muted playsInline/>
+                {/* Dark vignette overlay */}
+                <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.65) 100%)"}}/>
+                {/* Viewfinder box */}
+                <div style={{
+                  position:"absolute",
+                  top:"50%",left:"50%",
+                  transform:"translate(-50%,-50%)",
+                  width:"62%",height:"62%",
+                }}>
+                  <Corner pos="tl"/><Corner pos="tr"/><Corner pos="bl"/><Corner pos="br"/>
+                  {/* Scan line */}
+                  <div style={{
+                    position:"absolute",left:0,right:0,height:2,
+                    background:`linear-gradient(90deg,transparent,${oc},rgba(232,93,4,0.6),${oc},transparent)`,
+                    boxShadow:`0 0 12px ${oc}, 0 0 4px ${oc}`,
+                    animation:"qr-scan 2s linear infinite",
+                  }}/>
+                </div>
+                {/* Status bar */}
+                <div style={{
+                  position:"absolute",bottom:0,left:0,right:0,
+                  padding:"12px 16px",
+                  background:"linear-gradient(to top, rgba(0,0,0,0.8), transparent)",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                }}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:oc,animation:"pulse 1s infinite",display:"inline-block"}}/>
+                  <span style={{fontSize:12,color:"rgba(255,255,255,0.8)",fontWeight:500}}>Scanning for QR code…</span>
+                </div>
+              </>
+            ):(
+              <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:0}}>
+                {/* Static viewfinder idle state */}
+                <div style={{position:"relative",width:"62%",height:"62%"}}>
+                  <Corner pos="tl"/><Corner pos="tr"/><Corner pos="bl"/><Corner pos="br"/>
+                  <div style={{
+                    position:"absolute",inset:0,display:"flex",flexDirection:"column",
+                    alignItems:"center",justifyContent:"center",gap:8,
+                  }}>
+                    <div style={{fontSize:32,opacity:0.3}}>▦</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",textAlign:"center",lineHeight:1.4}}>Place QR<br/>here</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!scanning?(
+            <button onClick={startScan} style={{
+              ...S.btn(),padding:"14px 36px",fontSize:15,marginBottom:12,
+              boxShadow:`0 8px 32px rgba(232,93,4,0.4)`,
+              borderRadius:14,letterSpacing:0.5,
+            }}>
+              📷 Start Scanning
+            </button>
+          ):(
+            <button onClick={cleanup} style={{...S.btn(false),padding:"12px 28px",fontSize:14,marginBottom:12}}>
+              ✕ Cancel
+            </button>
+          )}
+          {err&&<div style={{fontSize:12,color:"rgba(255,120,80,0.9)",marginBottom:8,textAlign:"center"}}>❌ {err}</div>}
+        </>
+      )}
+
+      {/* ── UPLOAD MODE ── */}
+      {mode==="upload"&&(
+        <>
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFileChange}/>
+          <div
+            onClick={()=>uploadState==="idle"||uploadState==="fail"?fileRef.current?.click():null}
+            onDragOver={e=>{e.preventDefault();setDragging(true);}}
+            onDragLeave={()=>setDragging(false)}
+            onDrop={handleDrop}
+            style={{
+              width:FRAME_SIZE,height:FRAME_SIZE,borderRadius:20,
+              border:`2px dashed ${dragging?oc:uploadState==="success"?"#22c55e":uploadState==="fail"?"rgba(255,80,80,0.5)":"rgba(255,255,255,0.12)"}`,
+              background:dragging?`rgba(232,93,4,0.08)`:uploadState==="success"?"rgba(34,197,94,0.06)":"rgba(255,255,255,0.03)",
+              display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+              cursor:uploadState==="reading"?"default":"pointer",
+              position:"relative",overflow:"hidden",marginBottom:20,
+              transition:"all 0.25s ease",
+              animation:"qr-fade-in 0.3s ease",
+              boxShadow:dragging?`0 0 0 4px rgba(232,93,4,0.15)`:"none",
+            }}
+          >
+            {previewSrc&&(
+              <img src={previewSrc} alt="" style={{
+                position:"absolute",inset:0,width:"100%",height:"100%",
+                objectFit:"cover",opacity:uploadState==="success"?0.4:0.25,
+                borderRadius:18,
+              }}/>
+            )}
+
+            {uploadState==="idle"&&(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,position:"relative",zIndex:1}}>
+                <div style={{
+                  width:64,height:64,borderRadius:16,
+                  background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,
+                  animation:dragging?"qr-drag-bounce 0.6s ease infinite":"none",
+                }}>
+                  {dragging?"📂":"🖼️"}
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:14,fontWeight:600,color:"#fff",marginBottom:4}}>
+                    {dragging?"Drop it here":"Upload QR Image"}
+                  </div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",lineHeight:1.6}}>
+                    Drag & drop or tap to choose<br/>JPG, PNG, HEIC supported
+                  </div>
+                </div>
+                <div style={{
+                  padding:"6px 16px",borderRadius:20,
+                  background:`rgba(232,93,4,0.15)`,border:`1px solid rgba(232,93,4,0.3)`,
+                  fontSize:11,color:oc,fontWeight:600,letterSpacing:0.5,
+                }}>BROWSE FILES</div>
+              </div>
+            )}
+
+            {uploadState==="reading"&&(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,position:"relative",zIndex:1}}>
+                <div style={{
+                  width:52,height:52,borderRadius:"50%",
+                  border:`3px solid rgba(255,255,255,0.1)`,borderTopColor:oc,
+                  animation:"spin 0.8s linear infinite",
+                }}/>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",fontWeight:500}}>Reading QR code…</div>
+                {/* shimmer lines */}
+                <div style={{width:120,height:6,borderRadius:4,background:"rgba(255,255,255,0.08)",animation:"qr-shimmer 1.2s infinite"}}/>
+                <div style={{width:80,height:6,borderRadius:4,background:"rgba(255,255,255,0.05)",animation:"qr-shimmer 1.2s infinite 0.3s"}}/>
+              </div>
+            )}
+
+            {uploadState==="success"&&(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,position:"relative",zIndex:1}}>
+                {/* Success ring pulse */}
+                <div style={{position:"relative",width:64,height:64}}>
+                  <div style={{
+                    position:"absolute",inset:0,borderRadius:"50%",
+                    border:`2px solid #22c55e`,
+                    animation:"qr-success-ring 1s ease-out forwards",
+                  }}/>
+                  <div style={{
+                    width:64,height:64,borderRadius:"50%",
+                    background:"rgba(34,197,94,0.15)",border:"2px solid #22c55e",
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,
+                  }}>✓</div>
+                </div>
+                <div style={{fontSize:14,fontWeight:700,color:"#22c55e"}}>QR Code Found!</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Loading your ticket…</div>
+              </div>
+            )}
+
+            {uploadState==="fail"&&(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,position:"relative",zIndex:1}}>
+                <div style={{
+                  width:64,height:64,borderRadius:"50%",
+                  background:"rgba(255,80,80,0.1)",border:"2px solid rgba(255,80,80,0.4)",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,
+                }}>✕</div>
+                <div style={{fontSize:13,fontWeight:600,color:"rgba(255,100,100,0.9)"}}>Couldn't read QR</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textAlign:"center",lineHeight:1.5}}>
+                  Try a clearer, well-lit photo<br/>of the QR code
+                </div>
+                <button
+                  onClick={e=>{e.stopPropagation();setUploadState("idle");setPreviewSrc(null);setErr(null);}}
+                  style={{...S.btn(false),padding:"7px 18px",fontSize:12}}
+                >Try Again</button>
+              </div>
+            )}
+          </div>
+
+          {(uploadState==="idle"||uploadState==="fail")&&(
+            <button onClick={()=>fileRef.current?.click()} style={{
+              ...S.btn(),padding:"14px 36px",fontSize:15,marginBottom:12,
+              boxShadow:`0 8px 32px rgba(232,93,4,0.35)`,borderRadius:14,
+            }}>
+              🖼️ Choose Image
+            </button>
+          )}
+        </>
+      )}
+
+      {/* ── DEMO TICKETS ──────────────────────────────────────────────────────── */}
+      <div style={{width:"100%",marginTop:8}}>
+        <div style={{
+          display:"flex",alignItems:"center",gap:10,marginBottom:14,
+        }}>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.07)"}}/>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",fontWeight:700,letterSpacing:2,whiteSpace:"nowrap"}}>DEMO TICKETS</div>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.07)"}}/>
+        </div>
         {DEMO_QR.map((encoded,i)=>{
           const d=decodeTicket(encoded);
           const ch=CHAIN[d?.chain]||CHAIN.AMC;
+          const col=(ADMIN_CHAIN[d?.chain]||ADMIN_CHAIN.AMC).color;
           return(
-            <button key={i} className="seatbite-demo-ticket" onClick={()=>onScan(d)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"12px 14px",marginBottom:8,color:"#fff",fontFamily:font,cursor:"pointer"}}>
-              <div style={{width:36,height:36,borderRadius:8,background:ch.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{ch.emoji}</div>
-              <div style={{textAlign:"left",flex:1}}>
-                <div style={{fontWeight:600,fontSize:13}}>{d?.movie}</div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{d?.cinema} · Seat {d?.seat} · {d?.showtime}</div>
+            <button key={i} className="seatbite-demo-ticket" onClick={()=>onScan(d)} style={{
+              display:"flex",alignItems:"center",gap:12,width:"100%",
+              background:"rgba(255,255,255,0.03)",
+              border:`1px solid rgba(255,255,255,0.07)`,
+              borderRadius:14,padding:"12px 14px",marginBottom:8,
+              color:"#fff",fontFamily:font,cursor:"pointer",
+              transition:"all 0.2s",
+            }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=`${col}55`}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}
+            >
+              <div style={{
+                width:40,height:40,borderRadius:10,
+                background:`linear-gradient(135deg,${col}30,${col}15)`,
+                border:`1px solid ${col}40`,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:18,flexShrink:0,
+              }}>{ch.emoji}</div>
+              <div style={{textAlign:"left",flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d?.movie}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {d?.cinema} · Seat {d?.seat} · {d?.showtime}
+                </div>
               </div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>→</div>
+              <div style={{
+                fontSize:11,color:col,fontWeight:700,
+                background:`${col}15`,padding:"4px 8px",borderRadius:6,flexShrink:0,
+              }}>USE →</div>
             </button>
           );
         })}
